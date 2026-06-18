@@ -1,0 +1,1409 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Space Shooter - Simple</title>
+  <style>
+    html,body{height:100%;margin:0;background:#000;color:#ddd;font-family:Arial,Helvetica,sans-serif;display:flex;align-items:center;justify-content:center}
+    #ui{position:absolute;top:12px;left:12px;color:#fff}
+    button{margin-left:8px;padding:6px 10px;border-radius:6px;border:0;background:#222;color:#fff;cursor:pointer}
+    canvas{background:#000;border:3px solid #111;display:block}
+  </style>
+</head>
+<body>
+  <div id="ui">Score: <span id="score">0</span>
+    <div style="font-size:14px;margin-top:6px">Time: <span id="time">0:00</span></div>
+    <div style="font-size:14px;margin-top:4px">Health: <span id="hp">3</span></div>
+    <div style="font-size:14px;margin-top:4px">Power: <span id="power">x1</span></div>
+    <div style="font-size:14px;margin-top:4px">Difficulty: <span id="difficulty">Hard</span></div>
+    <div id="lvl2Stage" style="font-size:13px;margin-top:6px;color:#9df;display:none">Next Power: -</div>
+    <div style="margin-top:6px;display:inline-block">
+      <button id="restart">Restart</button>
+      <button id="pause">Pause</button>
+  <!-- Audio toggle button removed, use 'M' key instead -->
+    </div>
+  </div>
+
+  <!-- Hidden YouTube audio player -->
+  <iframe id="audioPlayer" width="0" height="0" style="display:none" src="https://www.youtube.com/embed/kpnW68Q8ltc?autoplay=1&loop=1&playlist=kpnW68Q8ltc" frameborder="0" allow="autoplay"></iframe>
+  <canvas id="game" width="800" height="1000"></canvas>
+
+  <!-- Difficulty selection screen -->
+  <div id="difficultyScreen" style="position:fixed;left:0;top:0;width:100%;height:100%;background:rgba(0,0,0,0.95);display:flex;align-items:center;justify-content:center;z-index:5000;flex-direction:column;color:#fff;">
+    <div style="font-size:48px;margin-bottom:40px;text-align:center;">SELECT DIFFICULTY</div>
+    <button id="easyBtn" style="padding:15px 40px;font-size:24px;margin:10px;background:#0a0;color:#000;cursor:pointer;border:none;border-radius:8px;">EASY</button>
+    <button id="normalBtn" style="padding:15px 40px;font-size:24px;margin:10px;background:#ff8;color:#000;cursor:pointer;border:none;border-radius:8px;">NORMAL</button>
+    <button id="hardBtn" style="padding:15px 40px;font-size:24px;margin:10px;background:#f00;color:#fff;cursor:pointer;border:none;border-radius:8px;">HARD</button>
+    <div style="margin-top:30px;font-size:36px;">SELECT SHIP</div>
+    <div style="display:flex;gap:16px;margin-top:12px;align-items:flex-start;">
+      <div style="text-align:center;">
+        <canvas id="ship1Preview" width="96" height="56" style="background:transparent;border-radius:6px;display:block;margin-bottom:6px"></canvas>
+        <button id="ship1Btn" style="padding:10px 14px;border-radius:8px;border:2px solid #888;background:#111;color:#fff;cursor:pointer;">Standard<br/><small style='font-size:12px;color:#bbb;'>Balanced</small></button>
+        <div id="ship1Stats" style="font-size:12px;color:#ccc;margin-top:6px">Speed: - &middot; HP: - &middot; Dmg: - &middot; FR: -</div>
+      </div>
+      <div style="text-align:center;">
+        <canvas id="ship2Preview" width="96" height="56" style="background:transparent;border-radius:6px;display:block;margin-bottom:6px"></canvas>
+        <button id="ship2Btn" style="padding:10px 14px;border-radius:8px;border:2px solid #888;background:#111;color:#fff;cursor:pointer;">Speed<br/><small style='font-size:12px;color:#bbb;'>Fast, low HP</small></button>
+        <div id="ship2Stats" style="font-size:12px;color:#ccc;margin-top:6px">Speed: - &middot; HP: - &middot; Dmg: - &middot; FR: -</div>
+      </div>
+      <div style="text-align:center;">
+        <canvas id="ship3Preview" width="96" height="56" style="background:transparent;border-radius:6px;display:block;margin-bottom:6px"></canvas>
+        <button id="ship3Btn" style="padding:10px 14px;border-radius:8px;border:2px solid #888;background:#111;color:#fff;cursor:pointer;">Tank<br/><small style='font-size:12px;color:#bbb;'>Slow, high HP</small></button>
+        <div id="ship3Stats" style="font-size:12px;color:#ccc;margin-top:6px">Speed: - &middot; HP: - &middot; Dmg: - &middot; FR: -</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  // Audio player controls
+  const audioPlayer = document.getElementById('audioPlayer');
+  let audioEnabled = true;
+  function playAudio() {
+    if(audioPlayer && audioEnabled) {
+      audioPlayer.style.display = 'block';
+      audioPlayer.src = 'https://www.youtube.com/embed/kpnW68Q8ltc?autoplay=1&loop=1&playlist=kpnW68Q8ltc';
+    }
+  }
+  function pauseAudio() {
+    if(audioPlayer) {
+      audioPlayer.style.display = 'none';
+      audioPlayer.src = '';
+    }
+  }
+  // Toggle audio with 'M' key
+  window.addEventListener('keydown', function(e) {
+    if(e.code === 'KeyM') {
+      audioEnabled = !audioEnabled;
+      if(audioEnabled) {
+        playAudio();
+      } else {
+        pauseAudio();
+      }
+    }
+  });
+  // Simple Space Shooter (Canvas)
+  const canvas = document.getElementById('game');
+
+
+  const ctx = canvas.getContext('2d');
+  const scoreEl = document.getElementById('score');
+  const restartBtn = document.getElementById('restart');
+  const pauseBtn = document.getElementById('pause');
+
+  // Pause overlay element (hidden by default)
+  const overlay = document.createElement('div');
+  overlay.id = 'pauseOverlay';
+  overlay.style.position = 'fixed';
+  overlay.style.left = '0'; overlay.style.top = '0'; overlay.style.width = '100%'; overlay.style.height = '100%';
+  overlay.style.display = 'flex'; overlay.style.alignItems = 'center'; overlay.style.justifyContent = 'center';
+  overlay.style.pointerEvents = 'none';
+  overlay.style.zIndex = '9999';
+  overlay.innerHTML = `<div id="pauseCard" style="pointer-events:auto;background:rgba(0,0,0,0.85);color:#fff;padding:30px 40px;border-radius:10px;text-align:center;display:none;">
+    <div style="font-size:48px;font-weight:700;margin-bottom:8px">PAUSED</div>
+    <div style="font-size:36px" id="pauseScore">Score: 0</div>
+    <div style="margin-top:12px;color:#ccc;font-size:14px">Press Esc or Resume to continue</div>
+  </div>`;
+  document.body.appendChild(overlay);
+
+  // Game over overlay (hidden)
+  const goOverlay = document.createElement('div');
+  goOverlay.id = 'gameOverOverlay';
+  goOverlay.style.position = 'fixed';
+  goOverlay.style.left = '0'; goOverlay.style.top = '0'; goOverlay.style.width = '100%'; goOverlay.style.height = '100%';
+  goOverlay.style.display = 'flex'; goOverlay.style.alignItems = 'center'; goOverlay.style.justifyContent = 'center';
+  goOverlay.style.pointerEvents = 'none'; goOverlay.style.zIndex = '10000';
+  goOverlay.innerHTML = `<div id="goCard" style="pointer-events:auto;background:rgba(0,0,0,0.9);color:#fff;padding:30px 40px;border-radius:10px;text-align:center;display:none;">
+    <div style="font-size:64px;font-weight:800;margin-bottom:12px">GAME OVER</div>
+    <div style="font-size:40px;margin-bottom:16px" id="goScore">Score: 0</div>
+    <div style="margin-top:12px">
+      <button id="goRestart" style="padding:10px 16px;font-size:18px;margin-right:8px;">Restart</button>
+      <button id="goContinue" style="padding:10px 16px;font-size:18px;">Weiter</button>
+    </div>
+  </div>`;
+  document.body.appendChild(goOverlay);
+
+  const W = canvas.width, H = canvas.height;
+  let elapsed = 0; // milliseconds
+  const timeEl = document.getElementById('time');
+  const powerEl = document.getElementById('power');
+  const lvl2StageEl = document.getElementById('lvl2Stage');
+
+  const Player = {
+    x: W/2, y: H-80, w: 28, h: 36, speed: 3, cooldown:0, hp: 3, invul: 0, shield: 0 // shield timer in ms
+  };
+  // Set player speed constant for each round (default - will be overridden by selection)
+  const PLAYER_SPEED = 1.5; // base slower default
+  Player.speed = PLAYER_SPEED;
+  // Global multipliers to slow enemies and enemy projectiles
+  const ENEMY_SPEED_FACTOR = 0.5; // enemies move at half speed
+  const ENEMY_BULLET_SPEED_FACTOR = 0.5; // enemy projectiles at half speed
+
+  // powerups and player power state (permanent until game over)
+  let powerups = []; // falling powerups on screen
+  Player.powerLevel = 0; // 0..3 stacked powerups
+  Player.shots = 1; // how many projectiles per shot (derived from powerLevel)
+
+  function applyPowerLevel(){
+    // Different ships get different effects from powerups
+    if(selectedShip === 'ship2'){
+      // Speed ship: powerups increase fire rate and bullet speed (not shot count)
+      // Use base values set when selecting ship
+      Player.fireCooldown = Math.max(4, (Player.fireCooldownBase || 8) - (Player.powerLevel * 2));
+      Player.bulletSpeed = (Player.bulletSpeedBase || 5) + (Player.powerLevel * 1.25);
+      // Visual power indicator shows fire rate multiplier
+      if(powerEl) {
+        const fr = Player.fireCooldown > 0 ? (60 / Player.fireCooldown) : 0;
+        powerEl.textContent = 'FR: ' + fr.toFixed(1) + ' r/s';
+      }
+    } else {
+      // Default behavior: increase shot count for other ships
+      switch(Player.powerLevel){
+        case 0: Player.shots = 1; break;
+        case 1: Player.shots = 2; break; // first powerup -> 2 shots
+        case 2: Player.shots = 4; break; // second powerup -> 4 shots
+        case 3: Player.shots = 5; break; // third powerup -> add single middle projectile (total 5)
+        default: Player.shots = 1; break;
+      }
+      if(powerEl) powerEl.textContent = 'x' + Player.shots;
+      // update stat legend (live values)
+      try{ renderShipStats(); }catch(e){}
+    }
+  }
+
+  function updateLevel2UI(){
+    if(!lvl2StageEl) return;
+    if(level < 2){ lvl2StageEl.style.display = 'none'; return; }
+    lvl2StageEl.style.display = 'block';
+    let txt = '';
+    // In level 2 we use a two-stage power sequence: 0 -> double damage, 1 -> increase projectiles
+    if(level2PowerStage === 0) txt = 'Next Power: x2 damage';
+    else txt = 'Next Power: +projectiles';
+    lvl2StageEl.textContent = txt;
+  }
+
+  let bullets = []; // player bullets
+  let enemies = []; // enemy objects
+  let enemyBullets = [];
+  let particles = []; // global particle list
+  // offscreen background for galaxies/nebula
+  let bgCanvas = null;
+  let bgCtx = null;
+  let goAutoReturnTimer = null; // timer id for auto-return to start screen after game over
+  let keys = {};
+  let score = 0;
+  let gameOver = false;
+  let paused = false;
+  let spawnTimer = 0;
+  let difficulty = 'hard'; // 'easy', 'normal', 'hard'
+  let difficultySelected = false;
+  let lastTime = 0;
+  let hitFlashEnemies = new Set(); // enemies currently showing hit flash
+  let started = false; // whether the actual game has started (after start screen)
+  let bossActive = false; // whether the boss has appeared
+  let boss = null; // boss object
+  let level = 1; // current level (after boss defeat it becomes 2)
+  let level2MessageTimer = 0; // ms to show level 2 message
+  let bossDefeated = false; // once true boss won't respawn
+  let level2PowerStage = 0; // cycles 0..2 to control special powerup behavior in level 2
+  // start screen ship animation
+
+  let startShipX = W/2;
+  let startDir = 1;
+
+  // Difficulty selection
+  const difficultyScreen = document.getElementById('difficultyScreen');
+  const easyBtn = document.getElementById('easyBtn');
+  const normalBtn = document.getElementById('normalBtn');
+  const hardBtn = document.getElementById('hardBtn');
+  const difficultyEl = document.getElementById('difficulty');
+
+  // Ship selection elements
+  const ship1Btn = document.getElementById('ship1Btn');
+  const ship2Btn = document.getElementById('ship2Btn');
+  const ship3Btn = document.getElementById('ship3Btn');
+  let selectedShip = 'ship1'; // default
+
+  // preview canvases
+  const ship1Preview = document.getElementById('ship1Preview');
+  const ship2Preview = document.getElementById('ship2Preview');
+  const ship3Preview = document.getElementById('ship3Preview');
+  // stat elements
+  const ship1Stats = document.getElementById('ship1Stats');
+  const ship2Stats = document.getElementById('ship2Stats');
+  const ship3Stats = document.getElementById('ship3Stats');
+
+  // load persisted selection if present
+  try{
+    const stored = localStorage.getItem('selectedShip');
+    if(stored) selectedShip = stored;
+  }catch(e){}
+
+  function updateShipUI(){
+    if(!ship1Btn || !ship2Btn || !ship3Btn) return;
+    ship1Btn.style.borderColor = selectedShip === 'ship1' ? '#fff' : '#888';
+    ship2Btn.style.borderColor = selectedShip === 'ship2' ? '#fff' : '#888';
+    ship3Btn.style.borderColor = selectedShip === 'ship3' ? '#fff' : '#888';
+  }
+
+  // apply selected ship stats to Player
+  function applySelectedShip(){
+    switch(selectedShip){
+      case 'ship1': // Standard (slower)
+        Player.w = 28; Player.h = 36; Player.speed = 3 * 0.5; Player.fireCooldown = 12; Player.fireCooldownBase = 12; Player.bulletSpeed = 4; Player.bulletSpeedBase = 4; Player.maxHp = 3; break;
+      case 'ship2': // Speed (fast)
+        Player.w = 22; Player.h = 30; Player.speed = 4; Player.fireCooldown = 8; Player.fireCooldownBase = 8; Player.bulletSpeed = 6; Player.bulletSpeedBase = 6; Player.maxHp = 2; break;
+      case 'ship3': // Tank (slower)
+        Player.w = 34; Player.h = 44; Player.speed = 2 * 0.5; Player.fireCooldown = 16; Player.fireCooldownBase = 16; Player.bulletSpeed = 3; Player.bulletSpeedBase = 3; Player.maxHp = 7; Player.bulletDmg = 2; break;
+      default:
+        Player.w = 28; Player.h = 36; Player.speed = 3; Player.fireCooldown = 12; Player.fireCooldownBase = 12; Player.bulletSpeed = 4; Player.bulletSpeedBase = 4; Player.maxHp = 3; break;
+    }
+  // bullet damage: tank does double damage, others normal
+  Player.bulletDmg = (selectedShip === 'ship3') ? 2 : 1;
+    // ensure current HP does not exceed max
+    if(Player.hp > Player.maxHp) Player.hp = Player.maxHp;
+    const hpEl = document.getElementById('hp'); if(hpEl) hpEl.textContent = Player.hp;
+  }
+
+  // ship button events (persist selection and update UI)
+  if(ship1Btn) ship1Btn.addEventListener('click', ()=>{ selectedShip = 'ship1'; try{ localStorage.setItem('selectedShip','ship1'); }catch(e){}; updateShipUI(); applySelectedShip(); drawShipPreviews(); renderShipStats(); });
+  if(ship2Btn) ship2Btn.addEventListener('click', ()=>{ selectedShip = 'ship2'; try{ localStorage.setItem('selectedShip','ship2'); }catch(e){}; updateShipUI(); applySelectedShip(); drawShipPreviews(); renderShipStats(); });
+  if(ship3Btn) ship3Btn.addEventListener('click', ()=>{ selectedShip = 'ship3'; try{ localStorage.setItem('selectedShip','ship3'); }catch(e){}; updateShipUI(); applySelectedShip(); drawShipPreviews(); renderShipStats(); });
+  updateShipUI();
+  applySelectedShip();
+
+  // draw simple previews for the ships
+  // Animated preview drawing for ships (tick is an animation counter)
+  let previewTick = 0;
+  function drawSimpleShip(ctx, type, tick){
+    if(!ctx) return;
+    const W = ctx.canvas.width, H = ctx.canvas.height;
+    ctx.clearRect(0,0,W,H);
+    ctx.save(); ctx.translate(W/2, H/2);
+    // animation helpers
+    const t = (tick || 0) * 0.06;
+    // draw a nicer stylized ship per type with simple lighting
+    const bob = Math.sin(t) * 2;
+    if(type === 'ship1'){
+      // Standard: balanced, sleek hull with cockpit
+      const grad = ctx.createLinearGradient(-20,-12,20,12);
+      grad.addColorStop(0,'#334'); grad.addColorStop(0.5,'#66a'); grad.addColorStop(1,'#334');
+      ctx.fillStyle = grad;
+      // hull
+      ctx.beginPath(); ctx.moveTo(-18,10 + bob); ctx.quadraticCurveTo(0,-12 + bob, 18,10 + bob); ctx.lineTo(10,14 + bob); ctx.lineTo(-10,14 + bob); ctx.closePath(); ctx.fill();
+      // cockpit
+      ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.beginPath(); ctx.ellipse(0,2 + bob,6,4,0,0,Math.PI*2); ctx.fill();
+      // engine glow
+      ctx.fillStyle = 'rgba(0,200,255,0.12)'; ctx.beginPath(); ctx.ellipse(0,18 + bob,12,5,0,0,Math.PI); ctx.fill();
+      // subtle outline
+      ctx.strokeStyle = 'rgba(0,0,0,0.4)'; ctx.lineWidth = 1; ctx.stroke();
+    } else if(type === 'ship2'){
+      // Speed: narrow nose, visible thruster flame
+      const grad = ctx.createLinearGradient(-18,-10,18,12);
+      grad.addColorStop(0,'#012'); grad.addColorStop(0.5,'#06c'); grad.addColorStop(1,'#012');
+      ctx.fillStyle = grad;
+      ctx.beginPath(); ctx.moveTo(-14,10); ctx.lineTo(0,-14); ctx.lineTo(14,10); ctx.closePath(); ctx.fill();
+      // thruster
+      const flameH = 6 + Math.abs(Math.sin(t*6))*6;
+      const flameGrad = ctx.createLinearGradient(0,6,0,20);
+      flameGrad.addColorStop(0,'#ff9'); flameGrad.addColorStop(0.5,'#ff6'); flameGrad.addColorStop(1,'rgba(255,100,0,0)');
+      ctx.fillStyle = flameGrad; ctx.beginPath(); ctx.moveTo(-6,12); ctx.quadraticCurveTo(0,12+flameH,6,12); ctx.closePath(); ctx.fill();
+      // cockpit highlight
+      ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.fillRect(-4,-6,8,4);
+    } else if(type === 'ship3'){
+      // Tank: broad armored hull with plating and rivets
+      const grad = ctx.createLinearGradient(-26,-6,26,16);
+      grad.addColorStop(0,'#442'); grad.addColorStop(0.5,'#b76'); grad.addColorStop(1,'#442');
+      ctx.fillStyle = grad;
+      ctx.beginPath(); ctx.moveTo(-22,10); ctx.lineTo(-12,-8); ctx.lineTo(12,-8); ctx.lineTo(22,10); ctx.lineTo(16,14); ctx.lineTo(-16,14); ctx.closePath(); ctx.fill();
+      // plating seam
+      ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(-12,-8); ctx.lineTo(12,-8); ctx.stroke();
+      // rivets
+      ctx.fillStyle = '#7a4'; for(let x=-14;x<=14;x+=7){ ctx.beginPath(); ctx.arc(x,4,2,0,Math.PI*2); ctx.fill(); }
+    }
+    ctx.restore();
+  }
+
+  // Draw a ship shape at origin (used by previews and in-game)
+  function drawShipShape(ctx, type, tick){
+    const t = (tick || 0) * 0.06;
+    const bob = Math.sin(t) * 2;
+    // choose base tone per ship type so preview and in-game match
+    let baseColor = '#66a';
+    if(type === 'ship1') baseColor = '#6f6';
+    else if(type === 'ship2') baseColor = '#3cf';
+    else if(type === 'ship3') baseColor = '#ffb86b';
+    if(type === 'ship1' || type === 'ship2' || type === 'ship3'){
+      const grad = ctx.createLinearGradient(-20,-12,20,12);
+      grad.addColorStop(0,'#222'); grad.addColorStop(0.5, baseColor); grad.addColorStop(1,'#111');
+      ctx.fillStyle = grad;
+      ctx.beginPath(); ctx.moveTo(-18,10 + bob); ctx.quadraticCurveTo(0,-12 + bob, 18,10 + bob); ctx.lineTo(10,14 + bob); ctx.lineTo(-10,14 + bob); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.beginPath(); ctx.ellipse(0,2 + bob,6,4,0,0,Math.PI*2); ctx.fill();
+      // engine glow color slightly biased by baseColor
+      ctx.fillStyle = 'rgba(255,200,120,0.10)'; ctx.beginPath(); ctx.ellipse(0,18 + bob,12,5,0,0,Math.PI); ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,0.4)'; ctx.lineWidth = 1; ctx.stroke();
+    }
+  }
+
+  // helper to pick particle colors (red-yellow family) with optional bias towards yellow
+  function pickParticleColor(biasYellow){
+    // base hues between 20 (orange) and 60 (yellow) and occasional red (hue 0)
+    const hue = (Math.random() < 0.12) ? 0 : (20 + Math.random()*40);
+    const sat = 70 + Math.random()*30; // 70..100
+    const light = biasYellow ? (60 + Math.random()*20) : (45 + Math.random()*30);
+    return `hsl(${Math.round(hue)}, ${Math.round(sat)}%, ${Math.round(light)}%)`;
+  }
+
+  function drawShipPreviews(){
+    if(ship1Preview){ const c = ship1Preview.getContext('2d'); drawSimpleShip(c,'ship1', previewTick); }
+    if(ship2Preview){ const c = ship2Preview.getContext('2d'); drawSimpleShip(c,'ship2', previewTick); }
+    if(ship3Preview){ const c = ship3Preview.getContext('2d'); drawSimpleShip(c,'ship3', previewTick); }
+  }
+  // animated preview loop (separate from main game loop)
+  function previewLoop(){ previewTick++; drawShipPreviews(); requestAnimationFrame(previewLoop); }
+  previewLoop();
+
+  // ship metadata for stat legend (kept in sync with applySelectedShip values)
+  const shipInfo = {
+    ship1: {speed:3, maxHp:3, dmg:1, fireCooldownBase:12},
+    ship2: {speed:4, maxHp:2, dmg:1, fireCooldownBase:8},
+    ship3: {speed:2, maxHp:7, dmg:2, fireCooldownBase:16}
+  };
+
+  function renderShipStats(){
+    function frFromCooldown(c){ return c > 0 ? (60 / c) : 0; }
+    // Build a richer HTML stat block with icons and bars
+    function buildHtmlFor(key){
+      const base = shipInfo[key];
+      let speed = base.speed;
+      let hp = base.maxHp;
+      let maxHp = base.maxHp;
+      let dmg = base.dmg;
+      let cooldown = base.fireCooldownBase;
+      let bulletSpeed = base.bulletSpeedBase || 4;
+      let shots = 1;
+      if(selectedShip === key){
+        speed = Player.speed || base.speed;
+        hp = (typeof Player.hp !== 'undefined') ? Player.hp : base.maxHp;
+        maxHp = Player.maxHp || base.maxHp;
+        dmg = Player.bulletDmg || base.dmg;
+        cooldown = Player.fireCooldown || base.fireCooldownBase;
+        bulletSpeed = Player.bulletSpeed || base.bulletSpeedBase || 4;
+        shots = Player.shots || 1;
+      }
+      const fr = frFromCooldown(cooldown);
+      // create bars (speed scaled to 5, fr scaled to 12 r/s)
+      const speedPct = Math.min(100, Math.round((speed / 5) * 100));
+      const frPct = Math.min(100, Math.round((fr / 12) * 100));
+      // show bulletSpeed for speed ship and show Shots only for non-speed ships
+      let extra = '';
+      if(key === 'ship2') extra = `<div style="font-size:11px;color:#9df;">Bullet spd: ${bulletSpeed.toFixed(1)}</div>`;
+      else if(shots > 1) extra = `<div style="font-size:11px;color:#ffd;">Shots: ${shots}</div>`;
+      return `
+        <div style="display:flex;align-items:center;gap:8px;justify-content:center;">
+          <div style="width:72px;text-align:left;">
+            <div style="font-size:12px;color:#fff;margin-bottom:4px">Speed</div>
+            <div style="width:72px;height:8px;background:#222;border-radius:6px;overflow:hidden"><div style="width:${speedPct}%;height:100%;background:#6cf"></div></div>
+            <div style="font-size:12px;color:#fff;margin-top:6px">HP</div>
+            <div style="font-size:12px;color:#f66">${hp}/${maxHp}</div>
+          </div>
+          <div style="width:90px;text-align:left;">
+            <div style="font-size:12px;color:#fff">Dmg: <span style='color:#ffd'>${dmg}</span></div>
+            <div style="font-size:12px;color:#fff;margin-top:6px">FR: <span style='color:#9df'>${fr.toFixed(1)} r/s</span></div>
+            <div style="width:72px;height:8px;background:#222;border-radius:6px;margin-top:6px;overflow:hidden"><div style="width:${frPct}%;height:100%;background:#fc6"></div></div>
+            ${extra}
+          </div>
+        </div>
+      `;
+    }
+    if(ship1Stats) ship1Stats.innerHTML = buildHtmlFor('ship1');
+    if(ship2Stats) ship2Stats.innerHTML = buildHtmlFor('ship2');
+    if(ship3Stats) ship3Stats.innerHTML = buildHtmlFor('ship3');
+  }
+  renderShipStats();
+
+  easyBtn.addEventListener('click', ()=>{ difficulty = 'easy'; difficultySelected = true; difficultyScreen.style.display = 'none'; });
+  normalBtn.addEventListener('click', ()=>{ difficulty = 'normal'; difficultySelected = true; difficultyScreen.style.display = 'none'; });
+  hardBtn.addEventListener('click', ()=>{ difficulty = 'hard'; difficultySelected = true; difficultyScreen.style.display = 'none'; });
+
+  // Controls
+  window.addEventListener('keydown', e=>{
+     // If we're on Game Over, Space returns to the initial start screen (don't auto-restart)
+     if(gameOver && e.code === 'Space'){
+       e.preventDefault();
+       hideGameOverScreen();
+       reset();
+       started = false; // show the start screen like on page load
+       difficultyScreen.style.display = 'flex';
+       difficultySelected = false;
+       return;
+     }
+     // If game hasn't started yet, Space starts the game (only if difficulty selected)
+     if(!started && e.code === 'Space' && difficultySelected){
+       e.preventDefault(); started = true; restart(); return;
+     }
+     // Toggle pause with Escape
+     if (e.code === 'Escape') { e.preventDefault(); togglePause(); return; }
+     keys[e.code]=true;
+     if(e.code==='Space'){ e.preventDefault(); shoot(); }
+  });
+  window.addEventListener('keyup', e=>{ keys[e.code]=false; });
+
+  function reset(){
+  bullets = []; enemies = []; enemyBullets = [];
+    score = 0; gameOver = false; paused = false; spawnTimer = 0;
+  Player.x = W/2; Player.y = H-80; Player.cooldown = 0;
+  pauseAudio();
+    elapsed = 0;
+    scoreEl.textContent = score; pauseBtn.textContent = 'Pause';
+    hidePauseScreen(); hideGameOverScreen();
+  // reset power state
+  Player.powerLevel = 0; applyPowerLevel();
+  level = 1; level2MessageTimer = 0; level2PowerStage = 0; bossDefeated = false;
+  updateLevel2UI();
+  // apply selected ship stats and reset health
+  applySelectedShip();
+  Player.hp = Player.maxHp || 3; Player.invul = 0; const hpEl = document.getElementById('hp'); if(hpEl) hpEl.textContent = Player.hp;
+    if(powerEl) powerEl.textContent = 'x1';
+    if(timeEl) timeEl.textContent = formatTime(elapsed);
+    // refresh stat legend to reflect applied ship and reset values
+    try{ renderShipStats(); }catch(e){}
+  }
+
+  // central level transition helper
+  function enterLevel(newLevel){
+    level = newLevel;
+    // show short message
+    level2MessageTimer = 2000;
+    if(newLevel === 2){
+      bossDefeated = true;
+      // reset power state for Level 2 sequence: single-shot baseline, base damage
+      try{
+  Player.powerLevel = Math.max(0, (Player.powerLevel || 0) - 4);
+  // do not force Player.shots here; reduce powerLevel so applyPowerLevel can recompute shots
+  Player.bulletDmg = 1; // reset damage baseline
+        level2PowerStage = 0; // first stage: double damage
+        applyPowerLevel();
+        try{ renderShipStats(); }catch(e){}
+        try{ updateLevel2UI(); }catch(e){}
+      }catch(e){}
+    }
+  }
+
+  function spawnBoss(){
+    boss = {
+      x: W/2,
+      y: 80,
+      w: 60,
+      h: 60,
+      hp: 200,
+      maxHp: 200,
+      shootTimer: 0,
+      attackPhase: 0, // 0, 1, or 2 for different attacks
+      phaseTimer: 0,
+      hitFlash: 0
+      ,rotTimer: 0, // rotation timer for visual oscillation
+      angle: 0
+    };
+    bossActive = true;
+  }
+
+  function restart(){
+    reset();
+    lastTime = performance.now();
+    audioEnabled = true;
+    playAudio();
+    requestAnimationFrame(loop);
+  }
+
+  function showPauseScreen(){
+    const card = document.getElementById('pauseCard');
+    const pscore = document.getElementById('pauseScore');
+    if(card){ pscore.textContent = 'Score: ' + score; card.style.display = 'block'; overlay.style.pointerEvents = 'auto'; }
+  }
+  function hidePauseScreen(){
+    const card = document.getElementById('pauseCard');
+    if(card){ card.style.display = 'none'; overlay.style.pointerEvents = 'none'; }
+  }
+
+  function togglePause(){
+    paused = !paused;
+    pauseBtn.textContent = paused ? 'Resume' : 'Pause';
+    if(paused){
+      showPauseScreen();
+      pauseAudio();
+    }
+    else {
+      hidePauseScreen();
+      playAudio();
+    }
+    if(!paused && !gameOver && started) { lastTime = performance.now(); requestAnimationFrame(loop); }
+  }
+  pauseBtn.addEventListener('click', togglePause);
+  restartBtn.addEventListener('click', ()=>{ restart(); });
+
+  // Game over show/hide
+  function showGameOverScreen(){
+    pauseAudio();
+    const card = document.getElementById('goCard');
+    const goScore = document.getElementById('goScore');
+    if(card){ goScore.textContent = 'Score: ' + score; card.style.display = 'block'; goOverlay.style.pointerEvents = 'auto'; }
+    // also ensure pause overlay hidden
+    hidePauseScreen();
+    // auto-return to start screen after 6 seconds
+    if(goAutoReturnTimer) clearTimeout(goAutoReturnTimer);
+    goAutoReturnTimer = setTimeout(()=>{
+      hideGameOverScreen();
+      reset();
+      started = false; // show start screen
+      goAutoReturnTimer = null;
+    }, 6000);
+  }
+  function hideGameOverScreen(){ const card = document.getElementById('goCard'); if(card){ card.style.display = 'none'; goOverlay.style.pointerEvents = 'none'; } clearGoAutoReturn(); }
+  // clear auto-return timer when hiding game over overlay
+  function clearGoAutoReturn(){ if(goAutoReturnTimer){ clearTimeout(goAutoReturnTimer); goAutoReturnTimer = null; } }
+
+  // wire restart and continue buttons in game over card
+  document.addEventListener('click', (e)=>{
+    if(!e.target) return;
+    if(e.target.id === 'goRestart'){
+      // immediate restart from Game Over card
+      hideGameOverScreen(); restart();
+    } else if(e.target.id === 'goContinue'){
+      // go to start/difficulty/ship selection screen
+      hideGameOverScreen();
+      reset();
+      started = false; // show start screen
+      // show difficulty selection so player can choose before starting
+      if(typeof difficultyScreen !== 'undefined' && difficultyScreen) {
+        difficultyScreen.style.display = 'flex';
+        difficultySelected = false;
+      }
+    }
+  });
+
+  function spawnShieldPowerup(x,y){
+    // add shield powerup that grants 4 seconds of invulnerability
+    powerups.push({x:x, y:y, vy:1.2, type:'shield'});
+  }
+
+  function shoot(){
+    if(Player.cooldown>0 || gameOver || paused) return;
+  const speed = Player.bulletSpeed || 4; // use ship-specific bullet speed
+    const count = Player.shots || 1;
+    const center = -Math.PI/2; // upward
+    const spread = (count > 1) ? (30 * Math.PI/180) : 0; // 30 degrees total spread when multi
+    for(let i=0;i<count;i++){
+      let ang = center;
+      if(count>1) ang = center - spread/2 + (i * (spread/(count-1)));
+      const vx = Math.cos(ang) * speed;
+      const vy = Math.sin(ang) * speed;
+      bullets.push({x:Player.x, y:Player.y-20, r:4, vx, vy, dmg: (Player.bulletDmg || 1)});
+    }
+  // set cooldown based on selected ship (frames)
+  Player.cooldown = Player.fireCooldown || 12;
+  }
+
+  function spawnEnemy(){
+    const ex = Math.random()*(W-60)+30;
+    // enemy type selection based on difficulty
+    const r = Math.random();
+    let type = 'basic';
+    
+    if(difficulty === 'easy'){
+      // Easy: mostly basic, sometimes weak drone or slow bomber
+      if(r < 0.75) type = 'basic';
+      else if(r < 0.9) type = 'drone';
+      else type = 'bomber';
+    } else if(difficulty === 'normal'){
+      // Normal: basic, shooter, blue, plus occasional drone/bomber
+      if(r < 0.45) type = 'shooter';
+      else if(r < 0.65) type = 'blue';
+      else if(r < 0.80) type = 'drone';
+      else if(r < 0.90) type = 'bomber';
+      else type = 'basic';
+    } else {
+      // Hard: include a new heavy enemy and generally higher variety
+      // distribution: shooter, blue, red, heavy, purple, yellow, drone, bomber
+      if(r < 0.16) type = 'shooter';
+      else if(r < 0.32) type = 'blue';
+      else if(r < 0.46) type = 'red';
+      else if(r < 0.56) type = 'heavy';
+      else if(r < 0.70) type = 'purple';
+      else if(r < 0.82) type = 'yellow';
+      else if(r < 0.92) type = 'drone';
+      else type = 'bomber';
+    }
+    
+    const ENEMY_SPEED = 1.5; // Set constant speed for all enemies
+    const speed = ENEMY_SPEED * ENEMY_SPEED_FACTOR; // Apply global factor
+  const hp = type === 'shooter' ? 2 : (type === 'blue' ? 3 : ((type === 'red' || type === 'heavy') ? 7 : (type === 'purple' ? 4 : (type === 'yellow' ? 5 : (type === 'bomber' ? 2 : (type === 'drone' ? 1 : 1))))));
+  // Set fire rates: drones and bombers do not shoot (999999), others have defined timers
+  const shootTimer = (type === 'basic' || type === 'drone' || type === 'bomber') ? 999999 : (type === 'blue' ? 1200/1.5 : (type === 'red' ? 2200/1.5 : (type === 'heavy' ? 1400/1.5 : (type === 'purple' ? 700/1.5 : (type === 'yellow' ? 1500/1.5 : 900/1.5)))));
+    const e = {x:ex, y:-40, w:34, h:24, speed, type, hp, shootTimer, hitFlash: 0};
+    enemies.push(e);
+  }
+
+  function update(dt){
+     if(gameOver || paused || !started) return;
+    // decrement level2 message timer
+    if(level2MessageTimer > 0) level2MessageTimer = Math.max(0, level2MessageTimer - dt);
+    // player movement
+    if(keys['ArrowLeft'] || keys['KeyA']) Player.x -= Player.speed;
+    if(keys['ArrowRight'] || keys['KeyD']) Player.x += Player.speed;
+    if(keys['ArrowUp'] || keys['KeyW']) Player.y -= Player.speed;
+    if(keys['ArrowDown'] || keys['KeyS']) Player.y += Player.speed;
+    // clamp
+    Player.x = Math.max(16, Math.min(W-16, Player.x));
+    Player.y = Math.max(40, Math.min(H-20, Player.y));
+
+    if(Player.cooldown>0) Player.cooldown--;
+
+  // reduce invulnerability timer
+  if(Player.invul > 0) Player.invul -= dt;
+  // reduce shield timer
+  if(Player.shield > 0) Player.shield -= dt;
+
+    // bullets (player) - support angled bullets (vx,vy) or fallback to vertical speed
+    for(let i=bullets.length-1;i>=0;i--){
+      const b = bullets[i];
+      if(typeof b.vx !== 'undefined' && typeof b.vy !== 'undefined'){
+        b.x += b.vx; b.y += b.vy;
+      } else if(typeof b.speed !== 'undefined'){
+        b.y -= b.speed;
+      } else {
+        b.y -= 8;
+      }
+      if(b.y < -50 || b.x < -50 || b.x > W+50) bullets.splice(i,1);
+    }
+
+    // enemy bullets
+    for(let i=enemyBullets.length-1;i>=0;i--){
+      const b = enemyBullets[i];
+      // support angled bullets (vx, vy) or fallback to vertical movement
+      if(typeof b.vx !== 'undefined' && typeof b.vy !== 'undefined'){
+        b.x += b.vx;
+        b.y += b.vy;
+      } else {
+        b.y += (b.speed || 4);
+      }
+      // remove if off-screen
+      if(b.y > H+50 || b.x < -50 || b.x > W+50) enemyBullets.splice(i,1);
+    }
+
+  // enemies - spawn rate increases over time until 60 seconds, then boss appears at 60 seconds
+  spawnTimer += dt;
+  const MAX_SPAWN_TIME = 60000; // 60 seconds in ms
+    // make all difficulties spawn more frequently (smaller numbers -> more frequent)
+    let currentSpawnRate = 1200; // base spawn rate in ms (was 1500)
+    
+    // Adjust spawn rate based on difficulty (made generally faster)
+    if(difficulty === 'easy'){
+      currentSpawnRate = 2200; // faster than before (was 3000)
+      if(elapsed < MAX_SPAWN_TIME){
+        const progress = elapsed / MAX_SPAWN_TIME;
+        currentSpawnRate = 2200 - (progress * 1200); // 2200 to 1000 (was 3000->1500)
+      }
+    } else if(difficulty === 'normal'){
+      currentSpawnRate = 1500; // faster than before (was 2000)
+      if(elapsed < MAX_SPAWN_TIME){
+        const progress = elapsed / MAX_SPAWN_TIME;
+        currentSpawnRate = 1500 - (progress * 900); // 1500 to 600 (was 2000->1000)
+      }
+    } else {
+      // hard mode - spawn even more frequently
+      if(elapsed < MAX_SPAWN_TIME){
+        const progress = elapsed / MAX_SPAWN_TIME;
+        currentSpawnRate = 1100 - (progress * 800); // 1100 to 300 (was 1500->500)
+      } else {
+        currentSpawnRate = 400; // fallback
+      }
+    }
+    
+    if(elapsed >= MAX_SPAWN_TIME && !bossActive && !bossDefeated){
+      // spawn boss at 90 seconds (only in hard mode) and only once
+      if(difficulty === 'hard'){
+        spawnBoss();
+      }
+    }
+    
+    if(spawnTimer > currentSpawnRate && !bossActive){ spawnTimer = 0; spawnEnemy(); }
+    
+    // Boss logic
+    if(bossActive && boss){
+      boss.shootTimer += dt;
+      boss.phaseTimer += dt;
+      boss.hitFlash -= dt;
+      
+      // boss cycles through 3 attack phases
+      if(boss.phaseTimer > 2000){
+        boss.attackPhase = (boss.attackPhase + 1) % 3;
+        boss.phaseTimer = 0;
+      }
+      
+    // boss attacks
+      if(boss.shootTimer > 400){
+        boss.shootTimer = 0;
+        if(boss.attackPhase === 0){
+          // attack 1: spread shot (5 projectiles)
+          for(let angle = -40; angle <= 40; angle += 20){
+            const rad = angle * Math.PI / 180;
+            // rotate by boss.angle
+            const radRot = rad + (boss.angle || 0);
+            const vx = Math.sin(radRot) * 2.5 * ENEMY_BULLET_SPEED_FACTOR; // scaled
+            const vy = Math.cos(radRot) * 2.5 * ENEMY_BULLET_SPEED_FACTOR; // scaled
+            enemyBullets.push({x:boss.x, y:boss.y+30, r:5, vx, vy, dmg:1, color:'#0ff'});
+          }
+        } else if(boss.attackPhase === 1){
+          // attack 2: rapid fire left-right
+          // left projectile
+          {
+            const ang = Math.atan2(2, -1.5); // base angle for left
+            const angRot = ang + (boss.angle || 0);
+            const vx = Math.cos(angRot) * Math.sqrt(1.5*1.5 + 2*2) * ENEMY_BULLET_SPEED_FACTOR * ( -1 );
+            const vy = Math.sin(angRot) * Math.sqrt(1.5*1.5 + 2*2) * ENEMY_BULLET_SPEED_FACTOR;
+            enemyBullets.push({x:boss.x-30, y:boss.y+30, r:5, vx:vx, vy:vy, dmg:1, color:'#f0f'});
+          }
+          // right projectile
+          {
+            const ang = Math.atan2(2, 1.5);
+            const angRot = ang + (boss.angle || 0);
+            const vx = Math.cos(angRot) * Math.sqrt(1.5*1.5 + 2*2) * ENEMY_BULLET_SPEED_FACTOR;
+            const vy = Math.sin(angRot) * Math.sqrt(1.5*1.5 + 2*2) * ENEMY_BULLET_SPEED_FACTOR;
+            enemyBullets.push({x:boss.x+30, y:boss.y+30, r:5, vx:vx, vy:vy, dmg:1, color:'#f0f'});
+          }
+          // center projectile (downwards rotated)
+          {
+            const baseAng = Math.PI/2; // down
+            const angRot = baseAng + (boss.angle || 0);
+            const sp = 2.5 * ENEMY_BULLET_SPEED_FACTOR;
+            enemyBullets.push({x:boss.x, y:boss.y+30, r:5, vx: Math.cos(angRot)*sp, vy: Math.sin(angRot)*sp, dmg:2, color:'#f0f'});
+          }
+        } else {
+          // attack 3: circular spread
+          for(let angle = 0; angle < Math.PI*2; angle += Math.PI/4){
+            const angRot = angle + (boss.angle || 0);
+            const vx = Math.cos(angRot) * 2 * ENEMY_BULLET_SPEED_FACTOR; // scaled
+            const vy = (Math.sin(angRot) * 2 + 1) * ENEMY_BULLET_SPEED_FACTOR; // scaled
+            enemyBullets.push({x:boss.x, y:boss.y+30, r:5, vx, vy, dmg:1, color:'#ffff00'});
+          }
+        }
+      }
+    }
+    
+    for(let i=enemies.length-1;i>=0;i--){
+      const e = enemies[i];
+      e.y += e.speed;
+      // reduce hit flash timer
+      if(e.hitFlash > 0) e.hitFlash -= dt;
+      // simple sideways bob
+      e.x += Math.sin((e.y + i)*0.01) * 0.6;
+        if(e.type === 'shooter'){
+        e.shootTimer -= dt;
+        if(e.shootTimer <= 0){
+          // simple shooter: single bullet straight down
+          const spd = (2 + Math.random()*0.75) * ENEMY_BULLET_SPEED_FACTOR; // scaled
+          enemyBullets.push({x:e.x, y:e.y+18, r:4, vx:0, vy:spd, dmg:1, color:'#f66'});
+          e.shootTimer = 600 + Math.random()*700; // faster shooting
+        }
+      } else if(e.type === 'blue'){
+        e.shootTimer -= dt;
+        if(e.shootTimer <= 0){
+          // blue enemy: fires two projectiles angled with 28 degrees between them
+          // aim center roughly at player
+          const dx = (Player.x - e.x);
+          const dy = (Player.y - e.y);
+          const centerAng = Math.atan2(dy, dx);
+          const spreadDeg = 28 * Math.PI/180; // 28 degrees in radians
+          const half = spreadDeg/2;
+          const spd = (1.9 + Math.random()*0.6) * ENEMY_BULLET_SPEED_FACTOR; // scaled
+          const ang1 = centerAng - half;
+          const ang2 = centerAng + half;
+          enemyBullets.push({x:e.x, y:e.y+18, r:4, vx: Math.cos(ang1)*spd, vy: Math.sin(ang1)*spd, dmg:1, color:'#f6a'});
+          enemyBullets.push({x:e.x, y:e.y+18, r:4, vx: Math.cos(ang2)*spd, vy: Math.sin(ang2)*spd, dmg:1, color:'#f6a'});
+          e.shootTimer = 1000 + Math.random()*900; // slower than shooter
+        }
+      } else if(e.type === 'red'){
+        e.shootTimer -= dt;
+        if(e.shootTimer <= 0){
+          // red heavy enemy: slow but damaging projectiles (2 HP)
+          const spd = (1.5 + Math.random()*0.4) * ENEMY_BULLET_SPEED_FACTOR; // scaled
+          // fire a single focused projectile downwards
+          enemyBullets.push({x:e.x, y:e.y+18, r:6, vx:0, vy:spd, dmg:2, color:'#c33'});
+          e.shootTimer = 1400 + Math.random()*1400; // slower fire rate
+        }
+      } else if(e.type === 'heavy'){
+        e.shootTimer -= dt;
+        if(e.shootTimer <= 0){
+          // heavy enemy: 3-projectile volley aimed at player (center + left/right)
+          const dx = (Player.x - e.x);
+          const dy = (Player.y - e.y);
+          const centerAng = Math.atan2(dy, dx);
+          const spread = 20 * Math.PI/180; // 20 degrees spread
+          const spd = (1.6 + Math.random()*0.5) * ENEMY_BULLET_SPEED_FACTOR;
+          const angs = [centerAng, centerAng - spread, centerAng + spread];
+          for(const ang of angs){
+            enemyBullets.push({x:e.x, y:e.y+18, r:5, vx: Math.cos(ang)*spd, vy: Math.sin(ang)*spd, dmg:1, color:'#b33'});
+          }
+          e.shootTimer = 1300 + Math.random()*800; // medium-slow fire rate
+        }
+      } else if(e.type === 'purple'){
+        e.shootTimer -= dt;
+        if(e.shootTimer <= 0){
+          // purple enemy: fires in a wide spread pattern (3 projectiles)
+          const spd = (2 + Math.random()*0.6) * ENEMY_BULLET_SPEED_FACTOR; // scaled
+          for(let angle = -30; angle <= 30; angle += 30){
+            const rad = angle * Math.PI / 180;
+            const vx = Math.sin(rad) * spd;
+            const vy = Math.cos(rad) * spd;
+            enemyBullets.push({x:e.x, y:e.y+18, r:4, vx, vy, dmg:1, color:'#a0f'});
+          }
+          e.shootTimer = 800/1.5; // medium fire rate
+        }
+      } else if(e.type === 'yellow'){
+        e.shootTimer -= dt;
+        if(e.shootTimer <= 0){
+          // yellow enemy: fires rapid bursts of 2 projectiles
+          const spd = (1.75 + Math.random()*0.35) * ENEMY_BULLET_SPEED_FACTOR; // scaled
+          enemyBullets.push({x:e.x-8, y:e.y+18, r:4, vx:-0.5 * ENEMY_BULLET_SPEED_FACTOR, vy:spd, dmg:1, color:'#ff0'});
+          enemyBullets.push({x:e.x+8, y:e.y+18, r:4, vx:0.5 * ENEMY_BULLET_SPEED_FACTOR, vy:spd, dmg:1, color:'#ff0'});
+          e.shootTimer = 600/1.5; // fast fire rate
+        }
+      }
+      if(e.y > H+50) enemies.splice(i,1);
+    }
+
+    // collisions: bullets -> boss
+    if(bossActive && boss){
+      for(let j=bullets.length-1;j>=0;j--){
+        const b = bullets[j];
+        if(dist(b.x,b.y,boss.x,boss.y) < 40){
+          bullets.splice(j,1);
+          const dmg = b.dmg || 1;
+          boss.hp -= dmg;
+          boss.hitFlash = 150;
+          if(boss.hp <= 0){
+            // boss defeated: despawn, award score, drop powerups and show level 2 message
+            bossActive = false;
+            boss = null;
+            score += 5000; scoreEl.textContent = score;
+            spawnLifePowerup(W/2, 100);
+            spawnPowerup(W/2-50, 120);
+            spawnPowerup(W/2+50, 120);
+            // spawn explosion particles
+            for(let k=0;k<50;k++) particles.push({x:W/2 + (Math.random()-0.5)*80, y:100 + (Math.random()-0.5)*80, vx:(Math.random()-0.5)*4, vy:(Math.random()-0.5)*4, life:800 + Math.random()*800, r:2 + Math.random()*3, color:'#f8c'});
+            // enter level 2 (centralized handler)
+            enterLevel(2);
+          }
+          break;
+        }
+      }
+    }
+
+    // update boss rotation timer (for visual) if boss active
+    if(bossActive && boss){
+      boss.rotTimer += dt;
+      // rotate back and forth every 800ms; amplitude 25 degrees
+      const phase = (boss.rotTimer % 1600) / 1600; // 0..1
+      // map phase to triangle wave -1..1
+      let tri = phase < 0.5 ? (phase * 2) : (2 - phase*2);
+      tri = (tri * 2) - 1; // -1..1
+      boss.angle = tri * (25 * Math.PI/180); // radians
+    }
+
+    // collisions: bullets -> enemies
+    for(let i=enemies.length-1;i>=0;i--){
+      const e = enemies[i];
+      for(let j=bullets.length-1;j>=0;j--){
+        const b = bullets[j];
+          if(dist(b.x,b.y,e.x,e.y) < 22){
+          bullets.splice(j,1);
+          const dmg = b.dmg || 1;
+          e.hp -= dmg;
+          e.hitFlash = 150; // trigger hit flash effect for 150ms
+          if(e.hp <= 0){
+              // drops: blue has a chance to drop powerup (25%), red drops a life powerup always, purple drops shield
+              if(e.type === 'blue' && Math.random() < 0.25){ spawnPowerup(e.x, e.y); }
+              if(e.type === 'red'){ spawnLifePowerup(e.x, e.y); }
+              if(e.type === 'purple'){ spawnShieldPowerup(e.x, e.y); }
+              // new weak enemies - drop helpful items more often
+              if(e.type === 'drone'){
+                if(Math.random() < 0.5) spawnPowerup(e.x, e.y);
+              }
+              if(e.type === 'bomber'){
+                // bomber: good chance for life, or fallback to powerup
+                if(Math.random() < 0.5) spawnLifePowerup(e.x, e.y);
+                else if(Math.random() < 0.4) spawnPowerup(e.x, e.y);
+              }
+              // spawn small explosion particles at enemy position
+              for(let k=0;k<18;k++) particles.push({x:e.x + (Math.random()-0.5)*e.w, y:e.y + (Math.random()-0.5)*e.h, vx:(Math.random()-0.5)*3, vy:(Math.random()-0.5)*3, life:400 + Math.random()*400, r:1 + Math.random()*2, color: (e.type === 'red' ? '#f44' : (e.type==='blue' ? '#6ef' : '#ff8'))});
+              enemies.splice(i,1);
+              score += 100; scoreEl.textContent = score;
+            }
+          break;
+        }
+      }
+    }
+
+    // enemy bullets -> player
+    for(let i=enemyBullets.length-1;i>=0;i--){
+      const b = enemyBullets[i];
+          if(dist(b.x,b.y,Player.x,Player.y) < 20){
+            const dmg = b.dmg || 1;
+            enemyBullets.splice(i,1);
+            playerHit(dmg);
+          }
+    }
+
+    // boss -> player (collision)
+    if(bossActive && boss){
+      if(dist(boss.x,boss.y,Player.x,Player.y) < 50){
+        playerHit(2);
+      }
+    }
+
+    // enemies -> player (collision)
+    for(let i=enemies.length-1;i>=0;i--){
+      const e = enemies[i];
+      if(dist(e.x,e.y,Player.x,Player.y) < 26){
+        // collide with enemy: damage player and remove enemy
+        enemies.splice(i,1);
+        playerHit(1);
+        break;
+      }
+    }
+
+    if(gameOver){ setTimeout(()=>{ showGameOverScreen(); }, 50); }
+    
+    // update particles
+    for(let pI=particles.length-1;pI>=0;pI--){
+      const P = particles[pI];
+      P.x += P.vx; P.y += P.vy; P.life -= dt; P.vy += 0.03; // slight gravity
+      if(P.life <= 0) particles.splice(pI,1);
+    }
+
+    // spawn engine particles while moving
+    if((keys['ArrowLeft']||keys['KeyA']||keys['ArrowRight']||keys['KeyD']||keys['ArrowUp']||keys['KeyW']||keys['ArrowDown']||keys['KeyS']) && !gameOver){
+      const sx = Player.x + (Math.random()-0.5)*6;
+      const sy = Player.y + 14 + Math.random()*4;
+      // engine particle color should follow the red->yellow family; bias slightly by selected ship (speedier ships more yellow)
+      const biasYellow = (Player.selectedShip === 'ship2');
+      particles.push({x:sx, y:sy, vx:(Math.random()-0.5)*0.6, vy:1 + Math.random()*0.6, life:200 + Math.random()*200, r:1 + Math.random()*1.5, color: pickParticleColor(biasYellow)});
+    }
+
+    // powerups are permanent until game over (no timer)
+
+    // update powerups (falling items)
+    for(let i=powerups.length-1;i>=0;i--){
+      const p = powerups[i];
+      p.y += p.vy;
+      if(p.y > H+30) { powerups.splice(i,1); continue; }
+      if(dist(p.x,p.y,Player.x,Player.y) < 24){
+        // pickup: either stacked shot-power, life, or shield
+        if(p.type === 'double'){
+          if(level >= 2){
+            // Special Level 2 sequence (two stages):
+            // stage 0 -> double damage permanently
+            // stage 1 -> increase projectile count (add one more projectile)
+            if(level2PowerStage === 0){
+              // first level-2 powerup: double damage
+              Player.bulletDmg = (Player.bulletDmg || 1) * 2;
+              level2PowerStage = 1;
+              try{ updateLevel2UI(); }catch(e){}
+              try{ renderShipStats(); }catch(e){}
+            } else if(level2PowerStage === 1){
+              // second level-2 powerup: increase projectile count via powerLevel so applyPowerLevel controls shots
+              Player.powerLevel = Math.min(3, (Player.powerLevel || 0) + 1);
+              level2PowerStage = 2; // sequence complete
+              try{ applyPowerLevel(); }catch(e){}
+              try{ updateLevel2UI(); }catch(e){}
+              try{ renderShipStats(); }catch(e){}
+            } else {
+              // sequence already completed - behave like a normal powerup (stack if allowed)
+              if(Player.powerLevel < 3) { Player.powerLevel++; applyPowerLevel(); }
+            }
+          } else {
+            // normal behavior before level 2
+            if(Player.powerLevel < 3) Player.powerLevel++;
+            applyPowerLevel();
+            if(powerEl) powerEl.textContent = 'x' + Player.shots;
+            try{ updateLevel2UI(); }catch(e){}
+          }
+        } else if(p.type === 'life'){
+          // add one HP up to max 5
+          // add one HP up to ship's max
+          if(Player.hp < (Player.maxHp || 5)) Player.hp++;
+          const hpEl = document.getElementById('hp'); if(hpEl) hpEl.textContent = Player.hp;
+          try{ renderShipStats(); }catch(e){}
+        } else if(p.type === 'shield'){
+          // grant 4 seconds of shield (invulnerability)
+          Player.shield = 4000;
+          Player.invul = 4000;
+        }
+        powerups.splice(i,1);
+      }
+    }
+  }
+
+  function dist(x1,y1,x2,y2){ const dx=x1-x2, dy=y1-y2; return Math.sqrt(dx*dx+dy*dy); }
+
+  function playerHit(dmg){
+    const damage = dmg || 1;
+    // ignore hits while invulnerable
+    if(Player.invul > 0 || gameOver) return;
+    Player.hp -= damage;
+    Player.invul = 800; // 800ms invulnerability after hit
+    const hpEl = document.getElementById('hp'); if(hpEl) hpEl.textContent = Player.hp;
+    try{ renderShipStats(); }catch(e){}
+    if(Player.hp <= 0){ gameOver = true; }
+  }
+
+  function formatTime(ms){
+    const total = Math.floor(ms/1000);
+    const m = Math.floor(total/60);
+    const s = total % 60;
+    return m + ':' + (s < 10 ? '0' + s : s);
+  }
+
+  function draw(){
+  // draw pre-rendered background (galaxies, nebula)
+  if(bgCanvas) ctx.drawImage(bgCanvas, 0, 0);
+  else { ctx.fillStyle = '#000'; ctx.fillRect(0,0,W,H); drawStars(); }
+     // if not started, draw start screen animation and text
+     if(!started){
+       // animate start ship left-right
+       startShipX += startDir * 2;
+       if(startShipX < 40 || startShipX > W-40) startDir *= -1;
+       // draw ship
+       ctx.save(); ctx.translate(startShipX, H-120);
+       ctx.fillStyle = '#0ff';
+       ctx.beginPath(); ctx.moveTo(0,-18); ctx.lineTo(12,12); ctx.lineTo(-12,12); ctx.closePath(); ctx.fill();
+       ctx.restore();
+       // title and instruction
+       ctx.fillStyle = 'rgba(255,255,255,0.95)'; ctx.font = '40px Arial'; ctx.textAlign='center'; ctx.fillText('SPACE SHOOTER', W/2, H/2 - 40);
+       ctx.font = '20px Arial'; ctx.fillText('Press Space to Start', W/2, H/2 + 0);
+       ctx.font = '18px Arial'; ctx.fillText('Move: ← →  Shoot: Space (hold)  Pause: Esc', W/2, H/2 + 36);
+       return;
+     }
+
+  // draw player with nicer visuals
+  function drawPlayer(){
+    ctx.save(); ctx.translate(Player.x, Player.y);
+    const inv = (Player.invul > 0);
+    ctx.globalAlpha = inv ? 0.5 : 1;
+    // choose base color by selectedShip
+    let baseA = '#0ff';
+    if(selectedShip === 'ship1') baseA = '#6cf';
+    else if(selectedShip === 'ship2') baseA = '#0ff';
+    else if(selectedShip === 'ship3') baseA = '#ffb86b';
+    // hull gradient
+    const g = ctx.createLinearGradient(-12,-14,12,14); g.addColorStop(0,'#001'); g.addColorStop(0.5, baseA); g.addColorStop(1,'#001');
+    ctx.fillStyle = g;
+    // main hull
+    ctx.beginPath(); ctx.moveTo(0,-18); ctx.quadraticCurveTo(12,0,0,16); ctx.quadraticCurveTo(-12,0,0,-18); ctx.closePath(); ctx.fill();
+    // cockpit
+    ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.beginPath(); ctx.ellipse(0,-4,5,3,0,0,Math.PI*2); ctx.fill();
+    // engine glow
+    ctx.fillStyle = baseA.replace('#','rgba(') + ',0.12)';
+    try{ ctx.fillStyle = 'rgba(0,200,255,0.12)'; }catch(e){}
+    ctx.beginPath(); ctx.ellipse(0,16,12,5,0,0,Math.PI); ctx.fill();
+    ctx.globalAlpha = 1; ctx.restore();
+  }
+  drawPlayer();
+
+    // bullets
+    ctx.fillStyle = '#ff8'; for(const b of bullets){ ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,Math.PI*2); ctx.fill(); }
+  // enemy bullets
+  for(const b of enemyBullets){ ctx.fillStyle = (b.color || '#f66'); ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,Math.PI*2); ctx.fill(); }
+
+    // particles
+    for(const p of particles){
+      const alpha = Math.max(0, Math.min(1, p.life / 800));
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = p.color || '#fff';
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI*2); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
+  // enemies (simple rectangles/circles)
+    for(const e of enemies){
+      ctx.save(); ctx.translate(e.x,e.y);
+      // Apply hit flash effect
+      if(e.hitFlash > 0){
+        ctx.globalAlpha = 0.5 + 0.5 * Math.sin(e.hitFlash * 0.05);
+        e.hitFlash -= 1000/60; // reduce based on frame time
+      }
+      if(e.type==='shooter'){
+        // blocky attacker with cockpit
+        const grad = ctx.createLinearGradient(-e.w/2,-e.h/2,e.w/2,e.h/2); grad.addColorStop(0,'#f6a'); grad.addColorStop(1,'#a04');
+        ctx.fillStyle = grad; ctx.fillRect(-e.w/2,-e.h/2,e.w,e.h);
+        ctx.fillStyle = '#111'; ctx.fillRect(-6,-6,12,8);
+      } else if(e.type === 'blue'){
+        // orb shooter with inner core
+        const g = ctx.createRadialGradient(0,0,4,0,0,18); g.addColorStop(0,'#9df'); g.addColorStop(1,'#036');
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0,0,16,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.beginPath(); ctx.arc(-4,-4,6,0,Math.PI*2); ctx.fill();
+      } else if(e.type === 'drone'){
+        // small triangular drone with antenna
+        ctx.fillStyle = '#2ee'; ctx.beginPath(); ctx.moveTo(0,-10); ctx.lineTo(9,8); ctx.lineTo(-9,8); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = '#044'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(0,-10); ctx.lineTo(0,-16); ctx.stroke();
+      } else if(e.type === 'bomber'){
+        // bulky bomber with visible plating
+        const pg = ctx.createLinearGradient(-14,-10,14,10); pg.addColorStop(0,'#fa8'); pg.addColorStop(1,'#c60');
+        ctx.fillStyle = pg; ctx.fillRect(-14,-10,28,20);
+        ctx.fillStyle = '#a50'; ctx.fillRect(-8,-6,16,12);
+      } else if(e.type === 'red'){
+        // heavy orb with darker core
+        const rg = ctx.createRadialGradient(0,0,6,0,0,18); rg.addColorStop(0,'#f88'); rg.addColorStop(1,'#600');
+        ctx.fillStyle = rg; ctx.beginPath(); ctx.arc(0,0,18,0,Math.PI*2); ctx.fill();
+      } else if(e.type === 'purple'){
+        // spiky star enemy
+        ctx.fillStyle = '#a0f'; drawStar(0, 0, 6, 16, 7);
+      } else if(e.type === 'yellow'){
+        // diamond with inner highlight
+        ctx.fillStyle = '#ffdf66'; ctx.beginPath(); ctx.moveTo(0,-16); ctx.lineTo(14,0); ctx.lineTo(0,16); ctx.lineTo(-14,0); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.beginPath(); ctx.moveTo(0,-10); ctx.lineTo(10,0); ctx.lineTo(0,10); ctx.lineTo(-10,0); ctx.closePath(); ctx.fill();
+      } else {
+        // basic enemy: small green orb
+        ctx.fillStyle = '#0f0'; ctx.beginPath(); ctx.arc(0,0,10,0,Math.PI*2); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+
+    // Draw boss if active
+    if(bossActive && boss){
+      ctx.save();
+      ctx.translate(boss.x, boss.y);
+      // apply rotation for visual effect
+      if(typeof boss.angle !== 'undefined') ctx.rotate(boss.angle || 0);
+      // Apply hit flash
+      if(boss.hitFlash > 0){
+        ctx.globalAlpha = 0.5 + 0.5 * Math.sin(boss.hitFlash * 0.05);
+        boss.hitFlash -= 1000/60;
+      }
+      // Draw boss: large purple octagon (rotated)
+      ctx.fillStyle = '#800';
+      ctx.beginPath();
+      for(let i=0; i<8; i++){
+        const angle = (i / 8) * Math.PI * 2;
+        const x = Math.cos(angle) * 35;
+        const y = Math.sin(angle) * 35;
+        if(i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#f0f';
+      ctx.beginPath();
+      for(let i=0; i<8; i++){
+        const angle = (i / 8) * Math.PI * 2;
+        const x = Math.cos(angle) * 25;
+        const y = Math.sin(angle) * 25;
+        if(i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.restore();
+      
+      // Draw boss health bar
+      const barWidth = 200;
+      const barHeight = 20;
+      const barX = W/2 - barWidth/2;
+      const barY = 20;
+      ctx.fillStyle = '#444';
+      ctx.fillRect(barX, barY, barWidth, barHeight);
+      const healthPercent = boss.hp / boss.maxHp;
+      ctx.fillStyle = healthPercent > 0.5 ? '#0f0' : (healthPercent > 0.25 ? '#ff0' : '#f00');
+      ctx.fillRect(barX, barY, barWidth * healthPercent, barHeight);
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(barX, barY, barWidth, barHeight);
+      ctx.fillStyle = '#fff';
+      ctx.font = '12px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(boss.hp + '/' + boss.maxHp, W/2, barY + 14);
+    }
+
+    // Level 2 message (brief)
+    if(level2MessageTimer > 0){
+      ctx.fillStyle = 'rgba(255,255,255,0.95)';
+      ctx.font = '48px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText('LVL 2', W/2, H/2);
+    }
+
+    function drawStar(cx, cy, spikes, outerRadius, innerRadius) {
+      let rot = Math.PI / 2 * 3;
+      let step = Math.PI / spikes;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - outerRadius);
+      for (let i = 0; i < spikes; i++) {
+        ctx.lineTo(cx + Math.cos(rot) * outerRadius, cy + Math.sin(rot) * outerRadius);
+        rot += step;
+        ctx.lineTo(cx + Math.cos(rot) * innerRadius, cy + Math.sin(rot) * innerRadius);
+        rot += step;
+      }
+      ctx.lineTo(cx, cy - outerRadius);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // powerups (draw falling items)
+      for(const p of powerups){
+        ctx.save(); ctx.translate(p.x,p.y);
+        if(p.type === 'double'){
+          // diamond shape for power
+          ctx.fillStyle = '#ffea00';
+          ctx.beginPath(); ctx.moveTo(0,-8); ctx.lineTo(8,0); ctx.lineTo(0,8); ctx.lineTo(-8,0); ctx.closePath(); ctx.fill();
+          ctx.fillStyle = '#000'; ctx.font='10px Arial'; ctx.textAlign='center'; ctx.fillText('P',0,3);
+        } else if(p.type === 'life'){
+          // heart-like or red diamond for life
+          ctx.fillStyle = '#ff4d4d';
+          ctx.beginPath(); ctx.moveTo(0,-9); ctx.lineTo(8,0); ctx.lineTo(0,9); ctx.lineTo(-8,0); ctx.closePath(); ctx.fill();
+          ctx.fillStyle = '#000'; ctx.font='10px Arial'; ctx.textAlign='center'; ctx.fillText('H',0,3);
+        } else if(p.type === 'shield'){
+          // shield powerup: blue star
+          ctx.fillStyle = '#00ffff';
+          drawStar(0, 0, 5, 12, 6);
+          ctx.fillStyle = '#000'; ctx.font='10px Arial'; ctx.textAlign='center'; ctx.fillText('S',0,3);
+        }
+        ctx.restore();
+      }
+
+    // Draw HP as hearts on canvas
+    drawHealthHearts();
+
+    // Draw difficulty indicator on canvas
+    ctx.fillStyle = '#ccc';
+    ctx.font = '16px Arial';
+    ctx.textAlign = 'right';
+    const diffText = difficulty.charAt(0).toUpperCase() + difficulty.slice(1);
+    ctx.fillText('Difficulty: ' + diffText, W - 20, 40);
+
+    // Draw shield indicator if active
+    if(Player.shield > 0){
+      ctx.save();
+      ctx.translate(Player.x, Player.y);
+      const shieldAlpha = Player.shield / 4000;
+      ctx.globalAlpha = 0.6 * shieldAlpha;
+      ctx.strokeStyle = '#00ffff';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(0, 0, 30, 0, Math.PI*2);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+
+    // HUD handled by DOM
+  }
+
+  function drawHealthHearts(){
+    const heartSize = 20;
+    const spacing = 6;
+    const startX = 12;
+    const startY = 12;
+    const total = Math.min(10, Player.maxHp || 5);
+    for(let i = 0; i < total; i++){
+      ctx.save();
+      ctx.translate(startX + i * (heartSize + spacing), startY);
+      if(i < Player.hp){
+        // Full heart (red)
+        drawHeart(heartSize/2, heartSize/2, heartSize/2, '#ff4d4d');
+      } else {
+        // Empty heart (gray)
+        drawHeart(heartSize/2, heartSize/2, heartSize/2, '#444444');
+      }
+      ctx.restore();
+    }
+  }
+
+  function drawHeart(x, y, size, color){
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(x, y + size/2);
+    ctx.bezierCurveTo(x - size, y - size/2, x - size/2, y - size/2, x - size/2, y);
+    ctx.bezierCurveTo(x - size/2, y - size/2, x, y - size/2, x, y + size/2);
+    ctx.bezierCurveTo(x, y - size/2, x + size/2, y - size/2, x + size/2, y);
+    ctx.bezierCurveTo(x + size/2, y - size/2, x + size, y - size/2, x, y + size/2);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // simple starfield
+  const stars = Array.from({length:80}, ()=>({x:Math.random()*W,y:Math.random()*H,r:Math.random()*1.2+0.3}));
+  function drawStars(){ ctx.fillStyle='#002'; ctx.fillRect(0,0,W,H); for(const s of stars){ s.y += 0.3; if(s.y>H) s.y=0; ctx.fillStyle='#0a0a0a'; ctx.fillRect(s.x,s.y,s.r,s.r); } }
+
+  function loop(t){
+    // guard: if lastTime isn't set (or was reset), initialize it to avoid huge dt
+    if(!lastTime) lastTime = t;
+    let dt = t - lastTime;
+    // If the tab was paused or the raf resumed after a long time, clamp dt to a reasonable frame time
+    // This prevents timers and game logic from being overloaded or appearing to slow down after pausing
+    if(dt > 250) dt = 16; // treat anything >250ms as a single ~60fps frame
+    lastTime = t;
+    // count elapsed time only while game is running
+    if(started && !paused && !gameOver) elapsed += dt;
+    update(dt);
+    draw();
+    // update time DOM
+    const te = document.getElementById('time'); if(te) te.textContent = formatTime(elapsed);
+    if(!gameOver && !paused) requestAnimationFrame(loop);
+  }
+
+  function gameStart(){ reset(); lastTime = performance.now(); audioEnabled = true; playAudio(); requestAnimationFrame(loop); }
+
+  // build static background (galaxies + nebula) in an offscreen canvas for performance
+  function buildBackground(){
+    bgCanvas = document.createElement('canvas'); bgCanvas.width = W; bgCanvas.height = H; bgCtx = bgCanvas.getContext('2d');
+    // base dark
+    bgCtx.fillStyle = '#001018'; bgCtx.fillRect(0,0,W,H);
+    // faint starfield
+    for(let i=0;i<300;i++){
+      const x = Math.random()*W, y = Math.random()*H, r = Math.random()*1.4; const alpha = 0.2 + Math.random()*0.9;
+      bgCtx.fillStyle = `rgba(255,255,255,${alpha})`; bgCtx.beginPath(); bgCtx.arc(x,y,r,0,Math.PI*2); bgCtx.fill();
+    }
+    // simple galaxy blobs (spiral suggestion)
+    function drawGalaxy(cx,cy,scale,color){
+      const g = bgCtx.createRadialGradient(cx,cy,5,cx,cy,120*scale);
+      g.addColorStop(0,'rgba(255,255,255,0.9)'); g.addColorStop(0.2,color); g.addColorStop(1,'rgba(0,0,0,0)');
+      bgCtx.fillStyle = g; bgCtx.beginPath(); bgCtx.ellipse(cx,cy,120*scale,80*scale, Math.random()*0.6,0,Math.PI*2); bgCtx.fill();
+      // star clusters overlay
+      for(let i=0;i<60;i++){ const ang=Math.random()*Math.PI*2; const rad=Math.random()*80*scale; const sx=cx+Math.cos(ang)*rad; const sy=cy+Math.sin(ang)*rad*0.6; bgCtx.fillStyle='rgba(255,255,220,'+(0.05+Math.random()*0.25)+')'; bgCtx.fillRect(sx,sy, (Math.random()*1.5), (Math.random()*1.5)); }
+    }
+    drawGalaxy(W*0.22, H*0.28, 1.0, 'rgba(200,220,255,0.4)');
+    drawGalaxy(W*0.75, H*0.35, 0.7, 'rgba(255,200,180,0.28)');
+    // Orion-like nebula (soft colorful cloud)
+    const nx = W*0.55, ny = H*0.7;
+    const neb = bgCtx.createRadialGradient(nx,ny,10,nx,ny,260);
+    neb.addColorStop(0,'rgba(180,80,220,0.35)'); neb.addColorStop(0.3,'rgba(200,120,80,0.22)'); neb.addColorStop(0.6,'rgba(120,200,220,0.12)'); neb.addColorStop(1,'rgba(0,0,0,0)');
+    bgCtx.fillStyle = neb; bgCtx.beginPath(); bgCtx.ellipse(nx,ny,260,160, -0.4,0,Math.PI*2); bgCtx.fill();
+    // faint darker mottling
+    for(let m=0;m<30;m++){ const mx=nx + (Math.random()-0.5)*260; const my=ny + (Math.random()-0.5)*120; bgCtx.fillStyle='rgba(0,0,0,'+(0.03+Math.random()*0.06)+')'; bgCtx.beginPath(); bgCtx.ellipse(mx,my,30+Math.random()*40,6+Math.random()*20, Math.random()*Math.PI,0,Math.PI*2); bgCtx.fill(); }
+  }
+  buildBackground();
+
+  function spawnPowerup(x,y){
+    // add a falling powerup that grants stacked shot-power (levels up to 3)
+    powerups.push({x:x, y:y, vy:1.2, type:'double'});
+  }
+
+  function spawnLifePowerup(x,y){
+    // add life powerup that grants +1 HP (up to 5)
+    powerups.push({x:x, y:y, vy:1.2, type:'life'});
+  }
+
+  // helper: auto-fire on hold (optional)
+  setInterval(()=>{ if((keys['KeyF'] || keys['Space']) && started && !paused && !gameOver) shoot(); }, 60);
+
+  // start
+  gameStart();
+
+  // utility: click to focus and allow space
+  canvas.addEventListener('click', ()=>canvas.focus());
+  </script>
+</body>
+</html>
