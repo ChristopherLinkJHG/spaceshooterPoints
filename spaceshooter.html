@@ -55,7 +55,8 @@
     </div>
   </div>
 
-  <script>
+<script type="module">
+  import { submitScores } from "../submitScores.js";
   // Audio player controls
   const audioPlayer = document.getElementById('audioPlayer');
   let audioEnabled = true;
@@ -547,6 +548,16 @@
     pauseAudio();
     const card = document.getElementById('goCard');
     const goScore = document.getElementById('goScore');
+    setTimeout(async () => {
+          let playerName = prompt("Gib deinen Namen für die Bestenliste ein:");
+          if (playerName && playerName.trim()) {
+            try {
+              await submitScores("Spaceshooter", score, playerName);
+            } catch (err) {
+              console.error("Fehler beim Senden des Scores:", err);
+            }
+          }
+        }, 50);
     if(card){ goScore.textContent = 'Score: ' + score; card.style.display = 'block'; goOverlay.style.pointerEvents = 'auto'; }
     // also ensure pause overlay hidden
     hidePauseScreen();
